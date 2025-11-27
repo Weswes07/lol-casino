@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Le Grand Casino - LoL</title>
+    <style>
+        /* DESIGN (CSS) */
+        body { 
+            background-color: #091428; /* Bleu LoL */
+            color: #C8AA6E; /* Or LoL */
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            text-align: center; 
+            margin: 0;
+            padding: 20px;
+        }
+        h1 { text-transform: uppercase; letter-spacing: 3px; margin-bottom: 10px; }
+        .container { max-width: 500px; margin: 0 auto; }
+        
+        /* Cartes */
+        .card { 
+            background: #0A1428; 
+            border: 2px solid #C8AA6E; 
+            padding: 20px; 
+            margin-bottom: 20px; 
+            border-radius: 8px; 
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+        }
+
+        /* Formulaire */
+        input, select { 
+            width: 80%; 
+            padding: 10px; 
+            margin: 10px 0; 
+            background: #1E2328; 
+            color: white; 
+            border: 1px solid #463714; 
+            border-radius: 4px;
+            font-size: 16px;
+        }
+        button { 
+            background: linear-gradient(to bottom, #C8AA6E, #A08346); 
+            color: #091428; 
+            border: none; 
+            padding: 12px 30px; 
+            font-weight: bold; 
+            cursor: pointer; 
+            font-size: 16px; 
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+        button:hover { filter: brightness(1.2); }
+
+        /* Classement */
+        .leaderboard-item { 
+            display: flex; 
+            justify-content: space-between; 
+            padding: 10px; 
+            border-bottom: 1px solid #333; 
+            font-size: 18px;
+        }
+        .leaderboard-item:last-child { border-bottom: none; }
+        .gold-icon { color: #FFD700; }
+        
+        /* Messages */
+        #msg { font-weight: bold; margin-top: 15px; height: 20px; }
+    </style>
+
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-database-compat.js"></script>
+</head>
+<body>
+
+    <div class="container">
+        <h1>⚜️ Le Grand Casino ⚜️</h1>
+        <p>Mise de départ : 1000 PO</p>
+
+        <div class="card">
+            <h3>💸 Placer un pari</h3>
+            
+            <input type="text" id="pseudo" placeholder="Ton Pseudo (ex: Faker)" />
+            
+            <select id="teamChoice">
+                <option value="BLUE">🟦 Équipe BLEUE (Gagne)</option>
+                <option value="RED">🟥 Équipe ROUGE (Gagne)</option>
+            </select>
+            
+            <input type="number" id="amount" placeholder="Montant de la mise" min="1" />
+            
+            <br>
+            <button onclick="placerPari()">VALIDER LE PARI</button>
+            
+            <p id="msg"></p>
+        </div>
+
+        <div class="card">
+            <h3>🏆 Tableau des Scores</h3>
+            <div id="leaderboard">Chargement...</div>
+        </div>
+    </div>
+
+    <script>
+        // 1. CONFIGURATION (C'est tes infos à toi)
+        const firebaseConfig = {
+            apiKey: "AIzaSyBWfju2oenpLQV61BMrJdov66DU8EvFQBk",
+            authDomain: "le-grand-casino-55996.firebaseapp.com",
+            databaseURL: "https://le-grand-casino-55996-default-rtdb.europe-west1.firebasedatabase.app",
+            projectId: "le-grand-casino-55996",
+            storageBucket: "le-grand-casino-55996.firebasestorage.app",
+            messagingSenderId: "438129780796",
+            appId: "1:438129780796:web:9ec6f5be079254dc95fb39",
+            measurementId: "G-JP4MKP0HH8"
+        };
+
+        // 2. INITIALISATION
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        // 3. FONCTION : PLACER UN PARI
+        function placerPari() {
+            const pseudoInput = document.getElementById('pseudo');
+            const amountInput = document.getElementById('amount');
+            const teamInput = document.getElementById('teamChoice');
+            const msgEl = document.getElementById('msg');
+
+            const pseudo = pseudoInput.value.trim();
+            const team = teamInput.value;
+            const amount = parseInt(amountInput.value);
+
+            // Vérif simple
+            if (!pseudo || !amount || amount <= 0) { 
+                msgEl.innerText = "❌ Entre un pseudo et une mise valide !";
+                msgEl.style.color = "#FF4444"; 
+                return; 
+            }
+
+            // On regarde dans la base de données
+            db.ref('users/' + pseudo).once('value', (snapshot) => {
+                // Si le joueur n'existe pas, on lui donne 1000 par défaut, sinon on prend son solde actuel
+                let currentGold = snapshot.val() ? snapshot.val().gold : 1000; 
+
+                if (currentGold < amount) {
+                    msgEl.innerText = "⛔ Pas assez d'argent ! Solde : " + currentGold;
+                    msgEl.style.color = "#FF4444";
+                } else {
+                    // 1. On enregistre le pari
+                    db.ref('bets/' + pseudo).set({
+                        team: team,
+                        amount: amount,
+                        timestamp: Date.now()
+                    });
+                    
+                    // 2. On retire l'argent tout de suite
+                    db.ref('users/' + pseudo).update({ gold: currentGold - amount });
+                    
+                    msgEl.innerText = "✅ Pari validé ! Solde restant : " + (currentGold - amount);
+                    msgEl.style.color = "#00FF00";
+                }
+            });
+        }
+
+        // 4. FONCTION : MISE A JOUR DU CLASSEMENT (Automatique)
+        db.ref('users').orderByChild('gold').on('value', (snapshot) => {
+            const list = document.getElementById('leaderboard');
+            list.innerHTML = ""; // On efface la liste pour la refaire
+            
+            let users = [];
+            snapshot.forEach((child) => {
+                users.push({name: child.key, gold: child.val().gold});
+            });
+
+            // On trie pour avoir les plus riches en haut
+            users.reverse();
+
+            if(users.length === 0) {
+                list.innerHTML = "<p>Aucun joueur pour l'instant.</p>";
+            }
+
+            users.forEach(u => {
+                list.innerHTML += `
+                    <div class="leaderboard-item">
+                        <span>${u.name}</span> 
+                        <span class="gold-icon">${u.gold} 💰</span>
+                    </div>`;
+            });
+        });
+    </script>
+
+</body>
+</html>
